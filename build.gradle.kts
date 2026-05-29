@@ -18,7 +18,7 @@ repositories {
     mavenCentral()
 }
 
-extra["testcontainersVersion"] = "1.20.4"
+extra["testcontainersVersion"] = "2.0.5"
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -40,9 +40,9 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testImplementation("org.springframework.kafka:spring-kafka-test")
-    testImplementation("org.testcontainers:junit-jupiter")
-    testImplementation("org.testcontainers:postgresql")
-    testImplementation("org.testcontainers:kafka")
+    testImplementation("org.testcontainers:testcontainers-junit-jupiter")
+    testImplementation("org.testcontainers:testcontainers-postgresql")
+    testImplementation("org.testcontainers:testcontainers-kafka")
     testImplementation("org.awaitility:awaitility")
     testCompileOnly("org.projectlombok:lombok")
     testAnnotationProcessor("org.projectlombok:lombok")
