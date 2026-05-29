@@ -1,0 +1,77 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-seed-templates
+      author: system
+      changes:
+        - insert:
+            tableName: notification_templates
+            columns:
+              - column:
+                  name: template_code
+                  value: WELCOME
+              - column:
+                  name: channel_type
+                  value: EMAIL
+              - column:
+                  name: content
+                  value: "Welcome, {{name}}! Your account has been created."
+        - insert:
+            tableName: notification_templates
+            columns:
+              - column:
+                  name: template_code
+                  value: WELCOME
+              - column:
+                  name: channel_type
+                  value: SMS
+              - column:
+                  name: content
+                  value: "Welcome {{name}}! Account created."
+        - insert:
+            tableName: notification_templates
+            columns:
+              - column:
+                  name: template_code
+                  value: WELCOME
+              - column:
+                  name: channel_type
+                  value: PUSH
+              - column:
+                  name: content
+                  value: "Welcome {{name}}!"
+        - insert:
+            tableName: notification_templates
+            columns:
+              - column:
+                  name: template_code
+                  value: ORDER_SHIPPED
+              - column:
+                  name: channel_type
+                  value: EMAIL
+              - column:
+                  name: content
+                  value: "Hi {{name}}, your order {{orderId}} has been shipped."
+        - insert:
+            tableName: notification_templates
+            columns:
+              - column:
+                  name: template_code
+                  value: ORDER_SHIPPED
+              - column:
+                  name: channel_type
+                  value: SMS
+              - column:
+                  name: content
+                  value: "Order {{orderId}} shipped!"
+        - insert:
+            tableName: notification_templates
+            columns:
+              - column:
+                  name: template_code
+                  value: ORDER_SHIPPED
+              - column:
+                  name: channel_type
+                  value: PUSH
+              - column:
+                  name: content
+                  value: "Order {{orderId}} is on its way!"

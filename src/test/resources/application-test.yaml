@@ -1,0 +1,5 @@
+app:
+  sender:
+    failure-rate: 0.0
+    min-delay-ms: 0
+    max-delay-ms: 0
