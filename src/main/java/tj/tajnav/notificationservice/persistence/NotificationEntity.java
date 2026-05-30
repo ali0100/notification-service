@@ -7,7 +7,6 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import tj.tajnav.notificationservice.domain.ChannelType;
-import tj.tajnav.notificationservice.domain.InvalidStatusTransitionException;
 import tj.tajnav.notificationservice.domain.NotificationStatus;
 import tj.tajnav.notificationservice.domain.Priority;
 
@@ -72,5 +71,9 @@ public class NotificationEntity {
         status.validateTransitionTo(next);
         this.status = next;
         this.updatedAt = Instant.now();
+    }
+
+    public boolean isStatusAccepted() {
+        return status == NotificationStatus.ACCEPTED;
     }
 }

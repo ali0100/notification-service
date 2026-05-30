@@ -26,6 +26,9 @@ public class NotificationConsumer {
         NotificationEntity entity = repository.findById(message.getNotificationId())
             .orElseThrow(() -> new IllegalStateException("Notification not found: " + message.getNotificationId()));
 
+        if (!entity.isStatusAccepted()) {
+            return;
+        }
         entity.transitionTo(NotificationStatus.PROCESSING);
         repository.save(entity);
 
