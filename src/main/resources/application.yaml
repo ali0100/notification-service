@@ -41,6 +41,10 @@ spring:
         max.in.flight.requests.per.connection: 5
 
 app:
+  security:
+    username: admin
+    password: secret
+
   sender:
     failure-rate: 0.1
     min-delay-ms: 50

@@ -6,7 +6,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tj.tajnav.notificationservice.domain.ChannelType;
-import tj.tajnav.notificationservice.persistence.NotificationTemplateEntity;
 import tj.tajnav.notificationservice.persistence.NotificationTemplateRepository;
 
 import java.util.Map;

@@ -11,10 +11,10 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.ConfluentKafkaContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 import tj.tajnav.notificationservice.domain.NotificationStatus;
 import tj.tajnav.notificationservice.persistence.NotificationEntity;
@@ -25,6 +25,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -36,8 +37,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DirtiesContext
 class NotificationIntegrationTest {
 
+    private static final String USERNAME = "admin";
+    private static final String PASSWORD = "secret";
+
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16");
+    static PostgreSQLContainer postgres = new PostgreSQLContainer(DockerImageName.parse("postgres:16"));
+
 
     @Container
     static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
@@ -76,6 +81,7 @@ class NotificationIntegrationTest {
             """.formatted(UUID.randomUUID());
 
         String response = mockMvc.perform(post("/api/v1/notifications")
+                .with(httpBasic(USERNAME, PASSWORD))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
             .andExpect(status().isAccepted())
@@ -97,8 +103,17 @@ class NotificationIntegrationTest {
     }
 
     @Test
+    void submitNotification_returnsUnauthorized_withoutCredentials() throws Exception {
+        mockMvc.perform(post("/api/v1/notifications")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void submitNotification_returnsBadRequest_whenMissingFields() throws Exception {
         mockMvc.perform(post("/api/v1/notifications")
+                .with(httpBasic(USERNAME, PASSWORD))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
             .andExpect(status().isBadRequest());
@@ -119,12 +134,14 @@ class NotificationIntegrationTest {
 
         for (int i = 0; i < 5; i++) {
             mockMvc.perform(post("/api/v1/notifications")
+                    .with(httpBasic(USERNAME, PASSWORD))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(body))
                 .andExpect(status().isAccepted());
         }
 
         mockMvc.perform(post("/api/v1/notifications")
+                .with(httpBasic(USERNAME, PASSWORD))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
             .andExpect(status().isTooManyRequests());

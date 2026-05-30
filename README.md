@@ -1,4 +1,4 @@
-# notification-service
+# Notification-service
 
 Async notification delivery service: accepts notification requests via REST, publishes to Kafka, and processes them asynchronously across EMAIL / SMS / PUSH channels.
 
@@ -44,7 +44,7 @@ Async notification delivery service: accepts notification requests via REST, pub
 | `template`    | Template lookup and `{{placeholder}}` interpolation   |
 | `sender`      | Channel sender interface + stubs (EMAIL/SMS/PUSH)     |
 | `ratelimit`   | Redis-backed rate limiter (5 req/min per recipientId) |
-| `config`      | Kafka topic bean, Security permit-all                 |
+| `config`      | Kafka topic bean, HTTP Basic Auth, password encoding  |
 
 ### Status transitions
 
@@ -116,12 +116,43 @@ Testcontainers will spin up Postgres, Redis, and Kafka automatically in containe
 
 ---
 
+## Authentication
+
+All API endpoints require **HTTP Basic Auth**. The actuator endpoints (`/actuator/**`) are public.
+
+Default credentials (configurable via `app.security.username` / `app.security.password`):
+
+| Field    | Default  |
+|----------|----------|
+| Username | `admin`  |
+| Password | `secret` |
+
+Example with curl:
+
+```bash
+curl -u admin:secret -X POST http://localhost:8080/api/v1/notifications \
+  -H "Content-Type: application/json" \
+  -d '{ ... }'
+```
+
+To override credentials without rebuilding, set environment variables:
+
+```bash
+APP_SECURITY_USERNAME=myuser APP_SECURITY_PASSWORD=mypass ./gradlew bootRun
+# or in docker-compose.yml under app.environment:
+#   APP_SECURITY_USERNAME: myuser
+#   APP_SECURITY_PASSWORD: mypass
+```
+
+---
+
 ## API
 
 ### Submit a notification
 
 ```
 POST /api/v1/notifications
+Authorization: Basic YWRtaW46c2VjcmV0
 Content-Type: application/json
 
 {
@@ -144,10 +175,11 @@ Content-Type: application/json
 
 **Errors**
 
-| Status | Cause                                    |
-|--------|------------------------------------------|
-| 400    | Missing or invalid fields                |
-| 429    | Rate limit exceeded (5/min per recipient)|
+| Status | Cause                                     |
+|--------|-------------------------------------------|
+| 400    | Missing or invalid fields                 |
+| 401    | Missing or invalid credentials            |
+| 429    | Rate limit exceeded (5/min per recipient) |
 
 ---
 
@@ -163,32 +195,63 @@ All defaults are in `application.yaml`. Override for Docker Compose via environm
 | `SPRING_DATA_REDIS_HOST`         | `localhost`                            |
 | `SPRING_KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092`                       |
 
-| App property               | Default | Effect                                        |
-|----------------------------|---------|-----------------------------------------------|
-| `app.sender.failure-rate`  | `0.1`   | Probability a sender stub throws (test: `0.0`)|
-| `app.sender.min-delay-ms`  | `50`    | Simulated send latency lower bound            |
-| `app.sender.max-delay-ms`  | `150`   | Simulated send latency upper bound            |
+| App property                | Default  | Effect                                         |
+|-----------------------------|----------|------------------------------------------------|
+| `app.security.username`     | `admin`  | Basic Auth username                            |
+| `app.security.password`     | `secret` | Basic Auth password (BCrypt-encoded at runtime)|
+| `app.sender.failure-rate`   | `0.1`    | Probability a sender stub throws (test: `0.0`) |
+| `app.sender.min-delay-ms`   | `50`     | Simulated send latency lower bound             |
+| `app.sender.max-delay-ms`   | `150`    | Simulated send latency upper bound             |
 
 ---
 
-## Tradeoffs & known limitations
+## Вопросы
+### Где в текущей архитектуре узкие места при росте нагрузки и как бы вы их устраняли? 
 
-### Delivery guarantees
+Простая реализация записи уведомления в базу данных и отправки сообщений в Kafka. Риск потери сообщений из-за отсутствия атомарности между записью в базу данных и отправкой сообщения в Kafka.
+1. Запись успешно сохраняется в БД.
+2. Отправка сообщения в Kafka завершается ошибкой.
+3. Запись остается в базе, но сообщение в Kafka отсутствует.
+4. Такая запись никогда не попадет в обработку.
 
-- **At-least-once**: Kafka consumer does not use manual offset commits with idempotent processing. A consumer crash after `PROCESSING` but before `SENT`/`FAILED` will re-process the message, potentially re-sending.
-- Idempotency guard (check `status == ACCEPTED` before transitioning) would prevent duplicate processing but is not yet implemented.
+### Как исправить
 
-### Rate limiting
+Использовать паттерн **Transactional Outbox**:
 
-- Redis `INCR` + `EXPIRE` is not atomic when the key doesn't exist yet. Under high concurrency a small window exists where the TTL might not be set. A Lua script or `SET NX PX` pattern would be strictly atomic.
-- Rate limit counters are lost on Redis restart.
+- В рамках одной транзакции сохранять:
+    - основную запись уведомления;
+    - запись в outbox-таблицу.
+- Отдельный процесс (publisher) читает события из outbox и публикует их в Kafka.
+- После успешной публикации событие помечается как обработанное.
 
-### What would be improved with more time
+Такой подход гарантирует, что событие не будет потеряно между БД и Kafka.
 
-- Idempotent consumer: skip reprocessing if notification is already `SENT`
-- Dead-letter topic for permanently failed messages
-- Outbox pattern: write to DB + publish in a single transaction (currently the Kafka publish can succeed after a DB rollback or vice versa)
-- Retry with exponential backoff on sender failures
-- Metrics (Micrometer counters for sent/failed per channel)
-- OpenAPI / Swagger docs
-- Authentication on the REST API
+---
+
+### Как обеспечивается (или не обеспечивается) гарантия доставки и идемпотентность обработки сообщений? Что произойдёт при падении консьюмера в середине обработки?
+
+Гарантия доставки сообщений без дубликатов обеспечивается путем правильной конфигурации продюсера, нужно, чтобы сделать producer идемпотентным (enable.idempotence=true). Kafka автоматически присваивает продюсеру ID (PID) и для каждой партиции ведется свой sequence number для сообщений.
+Чтобы корректно срабатывал идемпотентность продюсера, нужно чтобы остальные конфигурации тоже соответствовали
+При падении консьюмера в середине обработки, если offset не был закоммичен, то после перезапуска еще раз считывается тот же сообщение, что приведет к дубликату записи.
+
+
+Необходимые настройки:
+
+```properties
+enable.idempotence=true
+acks=all
+retries=Integer.MAX_VALUE
+max.in.flight.requests.per.connection=5
+```
+
+---
+
+### Что бы вы изменили или добавили, имея ещё неделю времени?
+1. Разделил бы API часть от Processing часть, это даст нам независимое масштабирование, отказоустойчивость и обработка продолжится даже если API недоступно.
+3. Реализовал бы retry с экспоненциальной задержкой и DLT.
+4. Кэширование шаблонов
+5. Добавил бы защиту на Kafka-cluster.
+   - аутентификацию (SASL);
+   - шифрование трафика (SSL/TLS);
+   - ACL для разграничения прав доступа продюсеров и консьюмеров.
+6. Добавил бы метрики и централизованное логирование
